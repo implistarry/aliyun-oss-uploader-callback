@@ -1,4 +1,4 @@
-# jenkins阿里云OSS上传插件
+# 基于[jenkins阿里云OSS上传插件](https://github.com/jenkinsci/aliyun-oss-uploader-plugin)增加了上传成功后的回调
 
 ## 使用
 
