@@ -38,5 +38,11 @@
         <f:entry title="${%CallbackUrl}" field="callbackUrl">
             <f:textbox />
         </f:entry>
+        <f:entry title="${%DeletePack}" field="isDelete">
+            <f:checkbox />
+        </f:entry>
+        <f:entry title="${%MultipartUpload}" field="multipartUpload">
+            <f:checkbox />
+        </f:entry>
     </f:advanced>
 </j:jelly>
