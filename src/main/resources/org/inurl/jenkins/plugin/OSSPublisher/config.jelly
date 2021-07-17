@@ -26,5 +26,17 @@
         <f:entry title="${%MaxRetries}" field="maxRetries">
             <f:textbox />
         </f:entry>
+        <f:entry title="${%GameId}" field="gameId">
+            <f:textbox />
+        </f:entry>
+        <f:entry title="${%GameName}" field="gameName">
+            <f:textbox />
+        </f:entry>
+        <f:entry title="${%ChannelLabel}" field="channelLabel">
+            <f:textbox />
+        </f:entry>
+        <f:entry title="${%CallbackUrl}" field="callbackUrl">
+            <f:textbox />
+        </f:entry>
     </f:advanced>
 </j:jelly>
