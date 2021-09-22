@@ -4,13 +4,11 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nonnull;
 
 import com.aliyun.oss.OSSClient;
-import com.aliyun.oss.event.ProgressEvent;
-import com.aliyun.oss.event.ProgressEventType;
-import com.aliyun.oss.event.ProgressListener;
 import com.aliyun.oss.model.*;
 import hudson.Extension;
 import hudson.FilePath;
@@ -25,6 +23,7 @@ import hudson.tasks.Publisher;
 import hudson.util.FormValidation;
 import hudson.util.Secret;
 import jenkins.tasks.SimpleBuildStep;
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.Symbol;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -147,13 +146,32 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
     }
 
     EnvVars envVars;
+//    MultipartUpload multipartUploader;
+    OSSClient ossClient;
+    private Map<String, MultipartUpload> uploadMap;
+
+    private MultipartUpload getMultipartUploader(String key) {
+        if (uploadMap.containsKey(key)) {
+            return uploadMap.get(key);
+        } else {
+            MultipartUpload upload = new MultipartUpload(accessKeyId, accessKeySecret.getPlainText(), endpoint, bucketName, logger);
+            uploadMap.put(key, upload);
+            return upload;
+        }
+    }
+
+    PrintStream logger;
 
     @Override
     public void perform(@Nonnull Run<?, ?> run, @Nonnull FilePath workspace, @Nonnull Launcher launcher,
                         @Nonnull TaskListener listener) throws InterruptedException, IOException {
-        PrintStream logger = listener.getLogger();
+        logger = listener.getLogger();
         envVars = run.getEnvironment(listener);
-        OSSClient client = new OSSClient(endpoint, accessKeyId, accessKeySecret.getPlainText());
+        if (!isMultipartUpload()) {
+//            multipartUploader = new MultipartUpload(accessKeyId, accessKeySecret.getPlainText(), endpoint, bucketName, logger);
+//        } else {
+            ossClient = new OSSClient(endpoint, accessKeyId, accessKeySecret.getPlainText());
+        }
 
         String channelLabelEx = envVars.expand(channelLabel);
         channelLabelList = channelLabelEx != null ? new ArrayList<String>(Arrays.asList(channelLabelEx.split(","))) : new ArrayList<>();
@@ -172,11 +190,11 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
             logger.println("待上传文件数量: " + fileNum);
             if (p.isDirectory()) {
                 logger.println("upload dir => " + p);
-                upload(client, logger, expandRemote, p, true);
+                upload(ossClient, logger, expandRemote, p, true);
                 logger.println("upload dir success");
             } else {
                 logger.println("upload file => " + p);
-                uploadFile(client, logger, expandRemote, p);
+                uploadFile(ossClient, logger, expandRemote, p);
                 logger.println("upload file success");
             }
         }
@@ -212,6 +230,9 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
             }
             return;
         }
+        if(isMultipartUpload()){
+            uploadMap = new HashedMap();
+        }
         uploadFile(client, logger, base + "/" + path.getName(), path);
     }
 
@@ -226,10 +247,24 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
         int retries = 0;
         do {
             if (retries > 0) {
-                logger.println("upload retrying (" + retries + "/" + maxRetries + ")");
+                logger.println("[!!!]upload retrying (" + retries + "/" + maxRetries + ")");
             }
             try {
-                uploadFile0(client, logger, key, path);
+                if (isMultipartUpload()) {
+                    getMultipartUploader(path.getRemote()).upload(path.getRemote(), key, new MultipartUpload.MPCallback() {
+                        @Override
+                        public void callback(boolean success, String msg, String path, PrintStream logger, String key, String localFilePath) {
+                            OSSPublisher.this.callback(success, msg, path, logger, key, localFilePath);
+                        }
+
+                        @Override
+                        public void fileIsTooLarge() throws IOException, InterruptedException {
+                            uploadFile0(client, logger, key, path);
+                        }
+                    });
+                } else {
+                    uploadFile0(client, logger, key, path);
+                }
                 return;
             } catch (Exception e) {
                 e.printStackTrace(logger);
@@ -266,8 +301,9 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
 
         InputStream inputStream = path.read();
         logger.println("uploading [" + path.getRemote() + "] to [" + realKey + "]");
-        client.putObject(bucketName, realKey, inputStream);
-
+//        client.putObject(bucketName, realKey, inputStream);
+        client.putObject(new PutObjectRequest(bucketName, realKey, inputStream)
+                .withProgressListener(new UploadProgressLisenter(logger)));
         callback(true, "上传成功", realKey, logger, key, path.getRemote());
     }
 
@@ -286,7 +322,9 @@ public class OSSPublisher extends Publisher implements SimpleBuildStep {
         result.remainingTaskNum = channelLabelList.size();
         String response = HttpURLConnectionUtil.post(envVars.expand(callbackUrl), result.getJson());
         logger.println("回调结果: " + response);
-
+        if (isMultipartUpload() && getMultipartUploader(path) != null && channelLabelList.size() == 0) {
+            getMultipartUploader(path).finishUpload();
+        }
         if (isDelete) {
             File file = new File(localFilePath);
             if (file.exists()) {

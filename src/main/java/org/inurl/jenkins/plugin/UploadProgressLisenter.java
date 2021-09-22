@@ -23,7 +23,7 @@ public class UploadProgressLisenter implements ProgressListener {
         ProgressEventType eventType = progressEvent.getEventType();
         switch (eventType) {
             case TRANSFER_STARTED_EVENT:
-                logger.println("Start to upload......");
+                logger.println("开始上传......");
                 break;
             case REQUEST_CONTENT_LENGTH_EVENT:
                 this.totalBytes = bytes;
@@ -40,10 +40,10 @@ public class UploadProgressLisenter implements ProgressListener {
                 break;
             case TRANSFER_COMPLETED_EVENT:
                 this.succeed = true;
-                logger.println("Succeed to upload, " + this.bytesWritten + " bytes have been transferred in total");
+                logger.println("上传成功, " + this.bytesWritten + " bytes have been transferred in total");
                 break;
             case TRANSFER_FAILED_EVENT:
-                logger.println("Failed to upload, " + this.bytesWritten + " bytes have been transferred");
+                logger.println("上传失败, " + this.bytesWritten + " bytes have been transferred");
                 break;
             default:
                 break;
